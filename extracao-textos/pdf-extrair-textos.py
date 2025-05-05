@@ -1,6 +1,3 @@
-#Requisitos
-#pip install pandas matplotlib scikit-learn joblib pdfminer.six imblearn
-
 #Bibliotecas
 import os
 import pandas as pd
