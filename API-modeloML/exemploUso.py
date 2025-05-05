@@ -1,4 +1,6 @@
 ######## Exemplo de uso #########
+import pandas as pd
+import joblib
 
 modelo = joblib.load(r'../API-modeloML/modeloFinal.pkl')
 vetorizadorTFIDF = joblib.load(r'../API-modeloML/vetorizador.pkl')
