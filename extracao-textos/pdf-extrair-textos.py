@@ -17,16 +17,13 @@ def extrair_primeira_pagina(caminho_arquivo):
 def processar_diretorio(diretorio, categoria):
     dados = []
 
-    # Validar diretorio
     if not os.path.exists(diretorio):
         print(f"O diretorio {diretorio} não existe.")
         return dados
 
-    # Listar os PDFs no diretorio
     arquivos_pdf = [os.path.join(diretorio, arquivo) for arquivo in os.listdir(diretorio)
                     if arquivo.lower().endswith('.pdf')]
 
-    # Processar cada PDF
     for arquivo in arquivos_pdf:
         texto = extrair_primeira_pagina(arquivo)
         dados.append({'texto': texto, 'categoria': categoria})
@@ -43,10 +40,8 @@ dados_sancoes = processar_diretorio("../documentos-juridicos/sancoes", 'sancao')
 # Combinar os dados
 todos_dados = dados_contratos + dados_licitacoes + dados_notasempenho + dados_sancoes
 
-# Criar Dataframe
+# Criar CSV
 df = pd.DataFrame(todos_dados)
-
-# Salvar no CSV
 df.to_csv('./documentos-classificados.csv', index=False, quoting=csv.QUOTE_ALL, encoding='utf-8')
 
 print(f"Arquivo CSV criado")
