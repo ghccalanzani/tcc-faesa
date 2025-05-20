@@ -87,14 +87,14 @@ def processar_documentos():
         # Classificar documento
         resultado = classificar_documento(texto)
         if resultado is None:
-            print(f"  Erro: Não foi possível classificar o documento")
+            print(f"Erro: Não foi possível classificar o documento")
             total_erros += 1
             continue
 
         # Obter categoria
         categoria = CATEGORIAS.get(resultado)
         if not categoria:
-            print(f"  Erro: Categoria inválida: {resultado}")
+            print(f"Erro: Categoria inválida: {resultado}")
             total_erros += 1
             continue
 
