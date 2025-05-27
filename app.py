@@ -1,12 +1,11 @@
-# Bibliotecas
 import os
 import pandas as pd
 import joblib
 import shutil
+import json
 from pdfminer.high_level import extract_text
 
-PASTA_ORIGEM = "input"
-PASTA_DESTINO_BASE = "output"
+# Categorias do modelo
 CATEGORIAS = {
     1: 'contratos',
     2: 'licitacoes',
@@ -14,22 +13,23 @@ CATEGORIAS = {
     4: 'sancoes'
 }
 
+ARQUIVO_REGISTRO = "arquivos_processados.txt"
+
+# Carregar modelo e vetorizador
 print("Carregando modelo e vetorizador...")
 modelo = joblib.load('API-modeloML/modeloFinal.pkl')
 vetorizadorTFIDF = joblib.load('API-modeloML/vetorizador.pkl')
 
-# Extrair primeira pag de cada pdf
+
 def extrair_primeira_pagina(caminho_arquivo):
     try:
         texto = extract_text(caminho_arquivo, page_numbers=[0])
-        texto = texto.replace('\n', ' ')
-        return texto
+        return texto.replace('\n', ' ')
     except Exception as e:
         print(f"Erro ao processar o arquivo {caminho_arquivo}: {str(e)}")
         return None
 
 
-# Classificar documento usando o modelo
 def classificar_documento(texto):
     try:
         texto_tfidf = vetorizadorTFIDF.transform([texto])
@@ -42,84 +42,105 @@ def classificar_documento(texto):
         return None
 
 
-# Criar diretórios de destino
-def criar_diretorios_destino():
+def criar_diretorios_destino(pasta_destino_base):
     for categoria in CATEGORIAS.values():
-        pasta_destino = os.path.join(PASTA_DESTINO_BASE, categoria)
+        pasta_destino = os.path.join(pasta_destino_base, categoria)
         os.makedirs(pasta_destino, exist_ok=True)
-    print(f"Diretórios criados em: {PASTA_DESTINO_BASE}")
 
 
-# Processar todos os PDFs da pasta de origem
-def processar_documentos():
-    # Validar pasta de origem (documentos não classificados)
-    if not os.path.exists(PASTA_ORIGEM):
-        print(f"Erro: A pasta com documentos para serem classificados não existe.")
-        return
+def carregar_registro_processados():
+    if os.path.exists(ARQUIVO_REGISTRO):
+        with open(ARQUIVO_REGISTRO, "r", encoding="utf-8") as f:
+            return set(linha.strip() for linha in f.readlines())
+    return set()
 
-    criar_diretorios_destino()
 
-    # Listar arquivos PDF na pasta de origem
-    arquivos_pdf = [arquivo for arquivo in os.listdir(PASTA_ORIGEM)
-                    if arquivo.lower().endswith('.pdf')]
+def salvar_registro_processado(nome_arquivo):
+    with open(ARQUIVO_REGISTRO, "a", encoding="utf-8") as f:
+        f.write(f"{nome_arquivo}\n")
 
+
+def carregar_contadores(pasta_destino_base):
+    contadores = {}
+
+    for categoria in CATEGORIAS.values():
+        pasta_categoria = os.path.join(pasta_destino_base, categoria)
+        if not os.path.exists(pasta_categoria):
+            os.makedirs(pasta_categoria)
+            contadores[categoria] = 0
+        else:
+            # Contar quantos arquivos PDF existem nessa pasta
+            arquivos = [arq for arq in os.listdir(pasta_categoria) if arq.lower().endswith(".pdf")]
+            contadores[categoria] = len(arquivos)
+
+    return contadores
+
+
+def gerar_nome_arquivo(categoria, contadores):
+    contadores[categoria] += 1
+    nome_formatado = f"{categoria[:-1].capitalize()}-{contadores[categoria]:02d}.pdf"
+    return nome_formatado
+
+
+
+def processar_documentos(pasta_origem, pasta_destino_base):
+    if not os.path.exists(pasta_origem):
+        return {"erro": f"A pasta de origem não existe: {pasta_origem}"}
+
+    criar_diretorios_destino(pasta_destino_base)
+    processados = carregar_registro_processados()
+    contadores = carregar_contadores(pasta_destino_base)
+
+    arquivos_pdf = [arq for arq in os.listdir(pasta_origem) if arq.lower().endswith(".pdf")]
     if not arquivos_pdf:
-        print(f"Nenhum arquivo PDF foi encontrado.")
-        return
+        return {"erro": "Nenhum arquivo PDF encontrado."}
 
-    print(f"Encontrados {len(arquivos_pdf)} arquivos PDF para processar...")
+    resultado_final = {
+        "processados": 0,
+        "erros": 0,
+        "por_categoria": {cat: 0 for cat in CATEGORIAS.values()}
+    }
 
-    # Criar contador de arquivos para cada categoria
-    contadores = {categoria: 0 for categoria in CATEGORIAS.values()}
-    total_processados = 0
-    total_erros = 0
-
-    # Processar cada arquivo
     for arquivo in arquivos_pdf:
-        # Extrair texto
-        caminho_origem = os.path.join(PASTA_ORIGEM, arquivo)
+        if arquivo in processados:
+            print(f"[IGNORADO] Já processado: {arquivo}")
+            continue
+
+        caminho_origem = os.path.join(pasta_origem, arquivo)
         texto = extrair_primeira_pagina(caminho_origem)
         if not texto:
-            print(f"Erro: Não foi possível extrair texto do arquivo")
-            total_erros += 1
+            resultado_final["erros"] += 1
             continue
 
-        # Classificar documento
         resultado = classificar_documento(texto)
         if resultado is None:
-            print(f"Erro: Não foi possível classificar o documento")
-            total_erros += 1
+            resultado_final["erros"] += 1
             continue
 
-        # Obter categoria
         categoria = CATEGORIAS.get(resultado)
         if not categoria:
-            print(f"Erro: Categoria inválida: {resultado}")
-            total_erros += 1
+            resultado_final["erros"] += 1
             continue
 
-        # Definir pasta de destino
-        pasta_destino = os.path.join(PASTA_DESTINO_BASE, categoria)
-        caminho_destino = os.path.join(pasta_destino, arquivo)
+        pasta_destino = os.path.join(pasta_destino_base, categoria)
+        novo_nome = gerar_nome_arquivo(categoria, contadores)
+        caminho_destino = os.path.join(pasta_destino, novo_nome)
 
-        # Copiar arquivo para pasta de destino
         try:
             shutil.copy2(caminho_origem, caminho_destino)
-            contadores[categoria] += 1
-            total_processados += 1
-            print(f"[OK] Classificado como '{categoria}' → {caminho_destino}")
+            salvar_registro_processado(arquivo)
+            resultado_final["por_categoria"][categoria] += 1
+            resultado_final["processados"] += 1
+            print(f"[OK] {arquivo} → {novo_nome}")
         except Exception as e:
-            print(f"[ERRO] Erro ao copiar arquivo: {str(e)}")
-            total_erros += 1
+            print(f"[ERRO] Erro ao copiar {arquivo}: {str(e)}")
+            resultado_final["erros"] += 1
 
-    # Exibir resumo
-    print("\nRESUMO DO PROCESSAMENTO\n")
-    print(f"Total de arquivos processados: {total_processados}")
-    print(f"Total de erros: {total_erros}")
-    print("\nArquivos por categoria:")
-    for categoria, quantidade in contadores.items():
-        print(f"- {categoria.capitalize()}: {quantidade}")
+    return resultado_final
 
-# Executar o processamento
+
+# Execução local
 if __name__ == "__main__":
-    processar_documentos()
+    resultado = processar_documentos("input", "output")
+    print("\nResumo:")
+    print(resultado)

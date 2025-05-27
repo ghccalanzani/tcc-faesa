@@ -1,1 +1,1 @@
-pandas matplotlib scikit-learn joblib pdfminer.six imblearn
+pandas matplotlib scikit-learn joblib pdfminer.six imblearn django
